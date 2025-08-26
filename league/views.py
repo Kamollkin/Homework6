@@ -1,85 +1,73 @@
-from rest_framework import viewsets, generics, permissions, status
-from rest_framework.response import Response
-from django.views.decorators.cache import cache_page
-from django.utils.decorators import method_decorator
+from rest_framework import viewsets, filters
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.pagination import PageNumberPagination
+from .models import CustomUser, PlayerProfile, League, Team, Player, Match
+from .serializers import (
+    UserSerializer, PlayerProfileSerializer, LeagueSerializer, 
+    TeamSerializer, PlayerSerializer, MatchSerializer
+)
+from .permissions import IsAdmin, IsManagerOrAdmin
 
-from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import CustomUser, PlayerProfile, League
-from .permissions import IsOwnerOrAdmin, IsAdmin
-from .serializers import( UserSerializer, PlayerProfileSerializer, LeagueSerializer,
-                         CustomTokenObtainPairSerializer, 
-                         RegisterSerializer)
-
-class RegisterView(generics.CreateAPIView):
-    queryset = CustomUser.objects.all()
-    serializer_class = RegisterSerializer
-    permission_classes = [permissions.AllowAny]
+class StandardPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = CustomUser.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAdmin]
+    pagination_class = StandardPagination
+
+
+class PlayerProfileViewSet(viewsets.ModelViewSet):
+    queryset = PlayerProfile.objects.select_related('user', 'manager', 'league').all()
+    serializer_class = PlayerProfileSerializer
+    permission_classes = [IsManagerOrAdmin]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['league', 'manager']
+    search_fields = ['user__email']
+    ordering_fields = ['number']
+    pagination_class = StandardPagination
+
 
 
 class LeagueViewSet(viewsets.ModelViewSet):
     queryset = League.objects.all()
     serializer_class = LeagueSerializer
     permission_classes = [IsAdmin]
-
-class PlayerProfileViewSet(viewsets.ModelViewSet):
-    queryset = PlayerProfile.objects.select_related("user","manager","league").all()
-    serializer_class = PlayerProfileSerializer
-    permission_classes = [IsOwnerOrAdmin]
-    filter_backends= [DjangoFilterBackend]
-    filterset_fields = ['position', 'league', 'manager']
-
-    @method_decorator(cache_page(60))  
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+    pagination_class = StandardPagination
 
 
-class CustomTokenObtainPairView(TokenObtainPairView):
-    serializer_class = CustomTokenObtainPairSerializer
-
-class ChangePasswordView(generics.UpdateAPIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def update(self, request, *args, **kwargs):
-        user = request.user
-        old_password = request.data.get("old_password")
-        new_password = request.data.get("new_password")
-
-        if not old_password or not new_password:
-            return Response({"error": "Old and new password required"}, status=status.HTTP_400_BAD_REQUEST)
-
-        if not user.check_password(old_password):
-            return Response({"old_password": "Wrong password"}, status=status.HTTP_400_BAD_REQUEST)
-
-        user.set_password(new_password)
-        user.save()
-        return Response({"status": "password changed"}, status=status.HTTP_200_OK)
+class TeamViewSet(viewsets.ModelViewSet):
+    queryset = Team.objects.all()
+    serializer_class = TeamSerializer
+    permission_classes = [IsManagerOrAdmin]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['league']
+    search_fields = ['name']
+    ordering_fields = ['name']
+    pagination_class = StandardPagination
 
 
-class LogoutView(generics.GenericAPIView):
-    permission_classes = [permissions.IsAuthenticated]
+class PlayerViewSet(viewsets.ModelViewSet):
+    queryset = Player.objects.select_related('profile', 'team').all()
+    serializer_class = PlayerSerializer
+    permission_classes = [IsManagerOrAdmin]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['team', 'profile']
+    search_fields = ['profile__user__email']
+    ordering_fields = ['goals', 'assists']
+    pagination_class = StandardPagination
 
-    def post(self, request, *args, **kwargs):
-        try:
-            refresh_token = request.data["refresh"]
-            token = RefreshToken(refresh_token)
-            token.blacklist()  
-            return Response({"status": "logged out"}, status=status.HTTP_205_RESET_CONTENT)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        
-class MeView(generics.RetrieveUpdateAPIView):
-    serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
-    def get_object(self):
-        return self.request.user
-
+class MatchViewSet(viewsets.ModelViewSet):
+    queryset = Match.objects.select_related('home_team', 'away_team').all()
+    serializer_class = MatchSerializer
+    permission_classes = [IsManagerOrAdmin]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['home_team', 'away_team', 'date']
+    ordering_fields = ['date']
+    pagination_class = StandardPagination

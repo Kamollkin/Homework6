@@ -1,48 +1,53 @@
 from rest_framework import serializers
-from .models import CustomUser, PlayerProfile, League
+from .models import CustomUser, PlayerProfile, League, Team, Player, Match
 from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ["id", "email", "role"]
+        fields = ['id', 'email', 'role', 'date_joined']
+
+class PlayerProfileSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    manager_email = serializers.CharField(source='manager.email', read_only=True)
+    league_name = serializers.CharField(source='league.name', read_only=True)
+
+    class Meta:
+        model = PlayerProfile
+        fields = ['id', 'user', 'manager', 'manager_email', 'league', 'league_name', 'position', 'number']
 
 class LeagueSerializer(serializers.ModelSerializer):
     class Meta:
         model = League
-        fields = ["id", "name", "season"]
+        fields = '__all__'
 
-class PlayerProfileSerializer(serializers.ModelSerializer):
-    user_email = serializers.ReadOnlyField(source="user.email")
-    manager_email = serializers.ReadOnlyField(source="manager.email")
-    league_name = serializers.ReadOnlyField(source="league.name")
-    
-    position = serializers.ChoiceField(choices=PlayerProfile.POSITION_CHOICES, required=False)
+
+class TeamSerializer(serializers.ModelSerializer):
+    league_name = serializers.CharField(source='league.name', read_only=True)
 
     class Meta:
-        model = PlayerProfile
-        fields = ["id", "user", "user_email", "manager", "manager_email",
-                  "league", "league_name", "position", "number"]
-        
+        model = Team
+        fields = ['id', 'name', 'league', 'league_name', 'created_at', 'updated_at']
 
-class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True)
-    password2 = serializers.CharField(write_only=True)
+
+class PlayerSerializer(serializers.ModelSerializer):
+    profile_email = serializers.CharField(source='profile.user.email', read_only=True)
+    team_name = serializers.CharField(source='team.name', read_only=True)
 
     class Meta:
-        model = CustomUser
-        fields = ['email', 'first_name', 'last_name', 'password', 'password2', 'role']
-        
+        model = Player
+        fields = ['id', 'profile', 'profile_email', 'team', 'team_name', 'goals', 'assists', 'yellow_cards', 'red_cards', 'created_at', 'updated_at']
 
-    def validate(self, data):
-        if data['password'] != data['password2']:
-            raise serializers.ValidationError({"password": "Passwords are not matched."})
-        return data
 
-    def create(self, validated_data):
-        validated_data.pop('password2')
-        return CustomUser.objects.create_user(**validated_data)
+class MatchSerializer(serializers.ModelSerializer):
+    home_team_name = serializers.CharField(source='home_team.name', read_only=True)
+    away_team_name = serializers.CharField(source='away_team.name', read_only=True)
+
+    class Meta:
+        model = Match
+        fields = ['id', 'home_team', 'home_team_name', 'away_team', 'away_team_name', 'home_score', 'away_score', 'date', 'created_at', 'updated_at']
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
